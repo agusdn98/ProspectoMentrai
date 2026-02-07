@@ -15,6 +15,7 @@ const authRoutes = require('./routes/auth');
 const companiesRoutes = require('./routes/companies');
 const listsRoutes = require('./routes/lists');
 const prospectingRoutes = require('./routes/prospecting');
+const aiSearchRoutes = require('./routes/aiSearch');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/errorHandler');
@@ -84,6 +85,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/companies', companiesRoutes);
 app.use('/api/lists', listsRoutes);
 app.use('/api/prospecting', prospectingRoutes);
+app.use('/api/ai-search', aiSearchRoutes);
 
 // Welcome route
 app.get('/', (req, res) => {

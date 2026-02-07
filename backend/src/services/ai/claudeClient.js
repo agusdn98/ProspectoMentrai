@@ -1,0 +1,123 @@
+const axios = require('axios');
+
+class ClaudeClient {
+  constructor() {
+    this.apiKey = process.env.ANTHROPIC_API_KEY;
+    this.baseURL = 'https://api.anthropic.com/v1';
+    this.model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
+
+    this.client = axios.create({
+      baseURL: this.baseURL,
+      headers: {
+        'x-api-key': this.apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      timeout: 30000
+    });
+  }
+
+  ensureApiKey() {
+    if (!this.apiKey) {
+      throw new Error('ANTHROPIC_API_KEY is not set');
+    }
+  }
+
+  async sendMessage(systemPrompt, userMessage, options = {}) {
+    this.ensureApiKey();
+
+    try {
+      const response = await this.client.post('/messages', {
+        model: this.model,
+        max_tokens: options.maxTokens || 2000,
+        system: systemPrompt,
+        messages: [
+          {
+            role: 'user',
+            content: userMessage
+          }
+        ]
+      });
+
+      return response.data.content?.[0]?.text || '';
+    } catch (error) {
+      const details = error.response?.data || error.message;
+      throw new Error(`Failed to get AI interpretation: ${JSON.stringify(details)}`);
+    }
+  }
+
+  async interpretProspectQuery(userQuery) {
+    const systemPrompt = `You are an expert sales intelligence assistant. Your job is to interpret natural language prospect searches and convert them into structured search criteria.
+
+ALWAYS respond with ONLY valid JSON in this exact format:
+{
+  "industries": ["industry1", "industry2"],
+  "jobTitles": ["title1", "title2"],
+  "seniorities": ["seniority1", "seniority2"],
+  "departments": ["dept1", "dept2"],
+  "companySizes": ["size_range1", "size_range2"],
+  "locations": ["location1", "location2"],
+  "fundingStages": ["stage1", "stage2"],
+  "technologies": ["tech1", "tech2"],
+  "keywords": ["keyword1", "keyword2"]
+}
+
+RULES:
+1. Industries: Use standard categories like "SaaS", "Technology", "E-commerce", "FinTech", "Healthcare", "Professional Services", "Manufacturing", "Retail", "Education", "Real Estate"
+2. Job Titles: Extract specific titles or patterns. Examples: "VP of Sales", "Director", "Head of HR", "Chief Technology Officer", "Sales Manager", "Talent Acquisition"
+3. Seniorities: Map to these values ONLY: "c_suite", "vp", "director", "manager", "senior", "entry"
+4. Departments: Use: "Sales", "Marketing", "HR", "Operations", "Engineering", "Customer Success", "Product", "Finance"
+5. Company Sizes (employee ranges): Use these EXACT formats: "1-10", "11-50", "51-200", "201-500", "501-1000", "1001-5000", "5000+"
+6. Locations: Extract cities, states, or countries. Examples: "San Francisco, CA", "New York", "California", "United States", "Barcelona, Spain"
+7. Funding Stages: Use: "Seed", "Series A", "Series B", "Series C", "Series D", "Growth", "Public", "Acquired"
+8. Technologies: Extract mentioned technologies or tech stacks. Examples: "Salesforce", "HubSpot", "AWS", "Python", "React"
+9. Keywords: Extract any other important keywords that do not fit above categories
+
+IMPORTANT:
+- Be generous with job title variations (include synonyms and variations)
+- If company size is mentioned as ">X employees", convert to appropriate ranges
+- Support both English and Spanish queries
+- Return ONLY the JSON, no explanations or markdown`;
+
+    const responseText = await this.sendMessage(systemPrompt, userQuery);
+
+    try {
+      const cleanedResponse = responseText
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+      return JSON.parse(cleanedResponse);
+    } catch (parseError) {
+      throw new Error(`AI returned invalid JSON format: ${responseText}`);
+    }
+  }
+
+  async generateSearchSuggestions(context = {}) {
+    const systemPrompt = `You are a sales intelligence assistant. Generate 5 relevant prospect search suggestions based on the context provided. Return ONLY a JSON array of strings.
+
+Example output:
+["Find VPs of Sales at SaaS companies in California", "Search for HR Directors at Series B startups", "Identify CTOs at tech companies using AWS"]`;
+
+    const userMessage = `Generate 5 prospect search suggestions${context.industry ? ` for ${context.industry} industry` : ''}${context.previousSearches ? `. Previous searches: ${context.previousSearches.join(', ')}` : ''}`;
+
+    const responseText = await this.sendMessage(systemPrompt, userMessage, { maxTokens: 800 });
+
+    try {
+      const cleanedResponse = responseText
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+      return JSON.parse(cleanedResponse);
+    } catch (error) {
+      return [
+        'Find VPs of Sales at SaaS companies',
+        'Search for HR Directors at tech startups',
+        'Identify CTOs at Series B companies',
+        'Find Customer Success leaders in Barcelona',
+        'Search for Sales Enablement professionals'
+      ];
+    }
+  }
+}
+
+module.exports = new ClaudeClient();

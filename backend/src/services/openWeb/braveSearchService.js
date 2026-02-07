@@ -1,0 +1,266 @@
+const axios = require('axios');
+const logger = require('../../utils/logger');
+const scoringService = require('../scoringService');
+const { ExternalAPIError } = require('../../middleware/errorHandler');
+const { enrichCompanyData, generateCompanyNames } = require('./openAIEnrichmentService');
+
+const BRAVE_API_URL = 'https://api.search.brave.com/res/v1/web/search';
+
+// Aggressive filtering of directories, review sites, news sites
+const BLOCKED_DOMAINS = [
+  'wikipedia.org', 'investopedia.com', 'britannica.com',
+  'g2.com', 'capterra.com', 'gartner.com', 'forrester.com',
+  'builtin.com', 'techcrunch.com', 'forbes.com', 'bloomberg.com',
+  'crunchbase.com', 'linkedin.com', 'facebook.com', 'twitter.com',
+  'youtube.com', 'reddit.com', 'quora.com',
+  'revenuezen.com', 'mikesonders.com', 'saasadviser.co',
+  'softwareadvice.com', 'trustradius.com', 'getapp.com',
+  'business.com', 'inc.com', 'entrepreneur.com',
+  'techradar.com', 'cnet.com', 'pcmag.com'
+];
+
+function normalizeDomain(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.replace(/^www\./, '');
+  } catch (error) {
+    return null;
+  }
+}
+
+function extractName(title, domain) {
+  if (!title) {
+    return domain ? formatDomainAsName(domain) : 'Unknown';
+  }
+  
+  // Remove common patterns from titles
+  let cleaned = title
+    .replace(/What is (a |an )?/gi, '')
+    .replace(/\?$/g, '')
+    .replace(/^\d+\s+(Best|Top|Leading)/gi, '') // Remove "20 Best...", "Top 10..."
+    .replace(/\s+(Home Page|Homepage|Website|Official Site)$/gi, '')
+    .replace(/\s+in\s+\w+\s+for\s+\d{4}$/gi, '') // Remove "in USA for 2025"
+    .split('|')[0]
+    .split('-')[0]
+    .split('—')[0]
+    .split(':')[0]
+    .trim();
+  
+  // Check if still too generic
+  const genericPatterns = [
+    /^(company|business|software|service|website|home|official|solutions?|platform|tool)/i,
+    /\d+\s+(best|top|leading)/i,
+    /for\s+\d{4}/i
+  ];
+  
+  const isGeneric = cleaned.length < 3 || 
+                    genericPatterns.some(pattern => pattern.test(cleaned)) ||
+                    cleaned.split(' ').length > 8; // Too long, probably a description
+  
+  if (isGeneric && domain) {
+    return formatDomainAsName(domain);
+  }
+  
+  return cleaned;
+}
+
+function formatDomainAsName(domain) {
+  // Extract name from domain (e.g., salesforce.com -> Salesforce)
+  const domainName = domain
+    .replace(/^www\./, '')
+    .replace(/\.(com|io|co|ai|net|org|tech|app)$/i, '')
+    .replace(/[-_]/g, ' ');
+  
+  // Capitalize each word
+  return domainName
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+async function fetchEmailsFromWebsite(websiteUrl) {
+  try {
+    const response = await axios.get(websiteUrl, {
+      timeout: 8000,
+      maxContentLength: 1024 * 1024,
+      headers: {
+        'User-Agent': 'MentraiBot/1.0 (+https://mentrai.ai)'
+      }
+    });
+
+    const html = response.data || '';
+    const matches = html.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || [];
+    const unique = Array.from(new Set(matches.map((email) => email.toLowerCase())));
+
+    return unique.slice(0, 3);
+  } catch (error) {
+    return [];
+  }
+}
+
+function isEducationalOrDefinitionSite(url, title, description) {
+  const domain = normalizeDomain(url);
+  
+  // Check against blocked domains
+  if (BLOCKED_DOMAINS.some(blocked => domain.includes(blocked))) {
+    logger.info(`Blocked domain: ${domain}`);
+    return true;
+  }
+
+  const badPatterns = [
+    /what is (a |an )?/i,
+    /definition of/i,
+    /explained:/i,
+    /guide to/i,
+    /understanding /i,
+    /learn about/i,
+    /introduction to/i,
+    /best \d+ /i,  // "Best 10 CRM"
+    /top \d+ /i,   // "Top 20 SaaS"
+    /directory/i,
+    /list of/i,
+    /review/i
+  ];
+
+  const text = `${title} ${description}`.toLowerCase();
+  if (badPatterns.some(pattern => pattern.test(text))) {
+    logger.info(`Blocked by pattern: ${title}`);
+    return true;
+  }
+  
+  return false;
+}
+
+// Search for a specific company by name
+async function searchSpecificCompany(companyName, filters) {
+  const query = `${companyName} official website ${filters.industries?.[0] || ''}`;
+  
+  try {
+    const response = await axios.get(BRAVE_API_URL, {
+      headers: {
+        Accept: 'application/json',
+        'X-Subscription-Token': process.env.BRAVE_API_KEY,
+      },
+      params: {
+        q: query,
+        count: 3, // Only get top 3 results per company
+        safesearch: 'moderate',
+      },
+      timeout: 10000,
+    });
+
+    const results = response.data?.web?.results || [];
+    
+    // Filter and return first non-blocked result
+    for (const result of results) {
+      if (!isEducationalOrDefinitionSite(result.url, result.title, result.description)) {
+        return result;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    logger.error(`Error searching for ${companyName}:`, error.message);
+    return null;
+  }
+}
+
+exports.searchCompaniesOpenWeb = async (filters) => {
+  const page = filters.page || 1;
+  const perPage = Math.min(filters.perPage || 10, 50);
+  const includeContacts = filters.includeContacts !== false;
+  const useAIEnrichment = filters.useAI !== false;
+
+  if (!process.env.BRAVE_API_KEY) {
+    throw new ExternalAPIError('Brave', 'Missing BRAVE_API_KEY');
+  }
+
+  try {
+    // Step 1: Use AI to generate list of real company names
+    logger.info('Generating company names with AI...');
+    const companyNames = await generateCompanyNames(filters, perPage);
+    
+    if (!companyNames || companyNames.length === 0) {
+      throw new Error('Failed to generate company names with AI');
+    }
+    
+    logger.info(`AI generated ${companyNames.length} company names`);
+
+    // Step 2: Search for each company specifically
+    logger.info('Searching for each company...');
+    const searchPromises = companyNames.map(name => searchSpecificCompany(name, filters));
+    const searchResults = await Promise.all(searchPromises);
+    
+    // Filter out nulls (companies we couldn't find)
+    const validResults = searchResults.filter(r => r !== null);
+    logger.info(`Found ${validResults.length} valid company websites`);
+
+    // Step 3: Process results into company objects
+    let companies = await Promise.all(
+      validResults.map(async (result, index) => {
+        const domain = normalizeDomain(result.url) || `unknown-${index}`;
+        const name = extractName(result.title, domain);
+        const industry = filters.industries?.[0] || null;
+
+        const score = scoringService.calculateCompanyScore({
+          industry,
+          companySize: null,
+          fundingStage: null,
+          technologiesUsed: [],
+          growthSignals: [],
+        });
+
+        let contacts = [];
+        if (includeContacts && result.url) {
+          const emails = await fetchEmailsFromWebsite(result.url);
+          contacts = emails.map((email) => ({
+            email,
+            source: 'website',
+          }));
+        }
+
+        return {
+          source: 'open-web',
+          name,
+          domain,
+          websiteUrl: result.url,
+          description: result.description,
+          industry,
+          locationCountry: filters.locations?.[0] || null,
+          idealCustomerScore: score,
+          contacts,
+        };
+      })
+    );
+
+    // Step 4: Enrich with AI if enabled
+    if (useAIEnrichment && process.env.OPENAI_API_KEY) {
+      logger.info('Enriching companies with OpenAI...');
+      companies = await Promise.all(
+        companies.map(async (company) => {
+          const enriched = await enrichCompanyData(company);
+          return enriched;
+        })
+      );
+      companies = companies.filter(c => c !== null);
+      logger.info(`AI enrichment complete. ${companies.length} real companies found`);
+    }
+
+    return {
+      companies,
+      pagination: {
+        page,
+        perPage,
+        totalEntries: companies.length,
+      },
+    };
+  } catch (error) {
+    logger.error('Company search error:', error.message);
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      throw new ExternalAPIError('Brave', 'Invalid or unauthorized API key');
+    }
+    throw new ExternalAPIError('Brave', error.message || 'Search failed');
+  }
+};
+
+module.exports = exports;

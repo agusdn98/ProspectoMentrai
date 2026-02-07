@@ -1,0 +1,340 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============ AUTHENTICATION & USERS ============
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  role          String    @default("user") // user, admin
+  teamId        String?
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  team          Team?     @relation(fields: [teamId], references: [id])
+  lists         List[]
+  campaigns     Campaign[]
+  savedSearches SavedSearch[]
+  activities    Activity[]
+
+  @@index([email])
+  @@index([teamId])
+}
+
+model Team {
+  id            String   @id @default(uuid())
+  name          String
+  plan          String   @default("free") // free, pro, enterprise
+  maxCompanies  Int      @default(100)
+  maxContacts   Int      @default(500)
+  maxApiCalls   Int      @default(1000)
+  apiCallsUsed  Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  users         User[]
+  apiKeys       ApiKey[]
+}
+
+model ApiKey {
+  id            String   @id @default(uuid())
+  teamId        String
+  provider      String   // 'apollo', 'hunter', 'clearbit'
+  keyValue      String   @db.Text
+  isActive      Boolean  @default(true)
+  lastUsedAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  team          Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@index([provider])
+}
+
+// ============ COMPANIES & CONTACTS ============
+
+model Company {
+  id                  String    @id @default(uuid())
+  teamId              String?
+  companyName         String
+  domain              String    @unique
+  industry            String?
+  subIndustry         String?
+  companySize         String?
+  locationCountry     String?
+  locationCity        String?
+  locationState       String?
+  foundedYear         Int?
+  description         String?   @db.Text
+  technologiesUsed    String[]
+  fundingStage        String?
+  totalFunding        Decimal?  @db.Decimal(15, 2)
+  latestFundingRound  DateTime?
+  latestFundingAmount Decimal?  @db.Decimal(15, 2)
+  linkedinUrl         String?
+  websiteUrl          String?
+  phone               String?
+  employeeCount       Int?
+  growthSignals       String[]
+  idealCustomerScore  Int       @default(0)
+  enrichmentStatus    String    @default("pending") // pending, processing, completed, failed
+  enrichedAt          DateTime?
+  apolloId            String?   @unique
+  logoUrl             String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
+
+  contacts            Contact[]
+  listCompanies       ListCompany[]
+  activities          Activity[]
+
+  @@index([domain])
+  @@index([industry])
+  @@index([companySize])
+  @@index([idealCustomerScore])
+  @@index([enrichmentStatus])
+  @@index([teamId])
+}
+
+model Contact {
+  id                 String    @id @default(uuid())
+  companyId          String
+  firstName          String
+  lastName           String
+  fullName           String
+  jobTitle           String?
+  department         String?
+  seniority          String?
+  email              String?
+  emailVerified      Boolean   @default(false)
+  emailStatus        String?   // verified, guessed, unavailable
+  personalEmails     String[]
+  phone              String?
+  phoneNumbers       Json?
+  linkedinUrl        String?
+  twitterUrl         String?
+  facebookUrl        String?
+  location           String?
+  city               String?
+  state              String?
+  country            String?
+  photoUrl           String?
+  relevantForOutreach Boolean  @default(false)
+  relevanceScore     Int       @default(0)
+  enrichmentStatus   String    @default("pending")
+  apolloId           String?   @unique
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
+
+  company            Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  listContacts       ListContact[]
+  campaignContacts   CampaignContact[]
+  activities         Activity[]
+
+  @@index([companyId])
+  @@index([email])
+  @@index([emailVerified])
+  @@index([relevantForOutreach])
+  @@index([department])
+  @@index([seniority])
+}
+
+// ============ LISTS ============
+
+model List {
+  id              String    @id @default(uuid())
+  listName        String
+  listDescription String?   @db.Text
+  createdBy       String
+  totalCompanies  Int       @default(0)
+  totalContacts   Int       @default(0)
+  listType        String    @default("custom") // custom, smart, imported
+  filtersUsed     Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  creator         User      @relation(fields: [createdBy], references: [id])
+  listCompanies   ListCompany[]
+  listContacts    ListContact[]
+  campaigns       Campaign[]
+
+  @@index([createdBy])
+  @@index([listType])
+}
+
+model ListCompany {
+  id        String   @id @default(uuid())
+  listId    String
+  companyId String
+  addedAt   DateTime @default(now())
+
+  list      List     @relation(fields: [listId], references: [id], onDelete: Cascade)
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, companyId])
+  @@index([listId])
+  @@index([companyId])
+}
+
+model ListContact {
+  id        String   @id @default(uuid())
+  listId    String
+  contactId String
+  addedAt   DateTime @default(now())
+
+  list      List     @relation(fields: [listId], references: [id], onDelete: Cascade)
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, contactId])
+  @@index([listId])
+  @@index([contactId])
+}
+
+// ============ CAMPAIGNS & EMAIL ============
+
+model EmailTemplate {
+  id            String   @id @default(uuid())
+  name          String
+  subject       String
+  body          String   @db.Text
+  variables     Json     // List of available variables
+  category      String?  // outreach, follow-up, etc.
+  createdBy     String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([category])
+}
+
+model Campaign {
+  id             String    @id @default(uuid())
+  campaignName   String
+  campaignType   String    @default("email") // email, linkedin
+  listId         String
+  status         String    @default("draft") // draft, active, paused, completed
+  sequenceSteps  Json      // [{step: 1, templateId, waitDays, type}]
+  startDate      DateTime?
+  endDate        DateTime?
+  totalContacts  Int       @default(0)
+  emailsSent     Int       @default(0)
+  emailsOpened   Int       @default(0)
+  emailsClicked  Int       @default(0)
+  emailsReplied  Int       @default(0)
+  emailsBounced  Int       @default(0)
+  meetingsBooked Int       @default(0)
+  createdBy      String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  list                List              @relation(fields: [listId], references: [id])
+  creator             User              @relation(fields: [createdBy], references: [id])
+  campaignContacts    CampaignContact[]
+  activities          Activity[]
+
+  @@index([status])
+  @@index([createdBy])
+  @@index([listId])
+}
+
+model CampaignContact {
+  id              String    @id @default(uuid())
+  campaignId      String
+  contactId       String
+  currentStep     Int       @default(0)
+  status          String    @default("pending") // pending, active, completed, bounced, replied, unsubscribed
+  lastTouchedAt   DateTime?
+  nextActionDate  DateTime?
+  emailsSent      Int       @default(0)
+  emailsOpened    Int       @default(0)
+  emailsClicked   Int       @default(0)
+  replied         Boolean   @default(false)
+  repliedAt       DateTime?
+  meetingBooked   Boolean   @default(false)
+  meetingBookedAt DateTime?
+  unsubscribed    Boolean   @default(false)
+  bounced         Boolean   @default(false)
+  notes           String?   @db.Text
+
+  campaign        Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact         Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, contactId])
+  @@index([campaignId])
+  @@index([contactId])
+  @@index([status])
+  @@index([nextActionDate])
+}
+
+// ============ ACTIVITY & TRACKING ============
+
+model Activity {
+  id              String    @id @default(uuid())
+  contactId       String?
+  campaignId      String?
+  companyId       String?
+  activityType    String    // email_sent, email_opened, email_clicked, email_replied, meeting_booked, note_added, enrichment_completed
+  activityDetails Json?
+  performedBy     String
+  performedAt     DateTime  @default(now())
+
+  contact         Contact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  campaign        Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  company         Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  user            User      @relation(fields: [performedBy], references: [id])
+
+  @@index([contactId])
+  @@index([campaignId])
+  @@index([companyId])
+  @@index([activityType])
+  @@index([performedAt])
+}
+
+model SavedSearch {
+  id             String   @id @default(uuid())
+  searchName     String
+  searchCriteria Json
+  createdBy      String
+  lastUsedAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  creator        User     @relation(fields: [createdBy], references: [id])
+
+  @@index([createdBy])
+}
+
+// ============ API USAGE TRACKING ============
+
+model ApiUsage {
+  id            String   @id @default(uuid())
+  teamId        String?
+  userId        String?
+  provider      String   // apollo, hunter, clearbit
+  endpoint      String
+  method        String
+  tokensUsed    Int      @default(1)
+  successful    Boolean  @default(true)
+  errorMessage  String?
+  requestedAt   DateTime @default(now())
+
+  @@index([teamId])
+  @@index([userId])
+  @@index([provider])
+  @@index([requestedAt])
+}

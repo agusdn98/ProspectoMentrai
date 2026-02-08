@@ -14,7 +14,7 @@ services:
     plan: starter
     runtime: node
     rootDir: backend
-    buildCommand: npm run build
+    buildCommand: npm install && npm run build:frontend && npx prisma generate && npx prisma db push --skip-generate --accept-data-loss
     startCommand: npm start
     envVars:
       - key: NODE_ENV

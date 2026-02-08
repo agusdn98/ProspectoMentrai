@@ -7,7 +7,7 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "build": "npm run build:frontend && npm run prisma:generate",
-    "build:frontend": "cd ../frontend && npm install && npm run build && cd ../backend && rm -rf public && cp -r ../frontend/dist public",
+    "build:frontend": "cd ../frontend && npm install --include=dev && npm run build && cd ../backend && rm -rf public && cp -r ../frontend/dist public",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",

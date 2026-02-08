@@ -2,15 +2,14 @@ const axios = require('axios');
 
 class ClaudeClient {
   constructor() {
-    this.apiKey = process.env.ANTHROPIC_API_KEY;
-    this.baseURL = 'https://api.anthropic.com/v1';
-    this.model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
+    this.apiKey = process.env.OPENAI_API_KEY;
+    this.baseURL = 'https://api.openai.com/v1';
+    this.model = process.env.OPENAI_MODEL || 'gpt-4-turbo-preview';
 
     this.client = axios.create({
       baseURL: this.baseURL,
       headers: {
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01',
+        'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json'
       },
       timeout: 30000
@@ -19,7 +18,7 @@ class ClaudeClient {
 
   ensureApiKey() {
     if (!this.apiKey) {
-      throw new Error('ANTHROPIC_API_KEY is not set');
+      throw new Error('OPENAI_API_KEY is not set');
     }
   }
 
@@ -27,11 +26,15 @@ class ClaudeClient {
     this.ensureApiKey();
 
     try {
-      const response = await this.client.post('/messages', {
+      const response = await this.client.post('/chat/completions', {
         model: this.model,
         max_tokens: options.maxTokens || 2000,
-        system: systemPrompt,
+        temperature: 0.7,
         messages: [
+          {
+            role: 'system',
+            content: systemPrompt
+          },
           {
             role: 'user',
             content: userMessage
@@ -39,7 +42,7 @@ class ClaudeClient {
         ]
       });
 
-      return response.data.content?.[0]?.text || '';
+      return response.data.choices?.[0]?.message?.content || '';
     } catch (error) {
       const details = error.response?.data || error.message;
       throw new Error(`Failed to get AI interpretation: ${JSON.stringify(details)}`);

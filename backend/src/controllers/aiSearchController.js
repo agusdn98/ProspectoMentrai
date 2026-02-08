@@ -17,6 +17,23 @@ exports.search = async (req, res, next) => {
       });
     }
 
+    // Validate API keys
+    if (!process.env.ANTHROPIC_API_KEY) {
+      logger.error('ANTHROPIC_API_KEY not configured');
+      return res.status(503).json({
+        success: false,
+        error: 'AI service is not configured. Please contact support.'
+      });
+    }
+
+    if (!process.env.APOLLO_API_KEY) {
+      logger.error('APOLLO_API_KEY not configured');
+      return res.status(503).json({
+        success: false,
+        error: 'Search service is not configured. Please contact support.'
+      });
+    }
+
     logger.info('AI search request', { userId, query });
 
     const result = await intelligentSearch.search(query);
@@ -34,6 +51,7 @@ exports.search = async (req, res, next) => {
 
     return res.json(formatResponse(result, summary));
   } catch (error) {
+    logger.error('AI search error:', { error: error.message, stack: error.stack });
     next(error);
   }
 };

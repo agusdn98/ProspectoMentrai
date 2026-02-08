@@ -1,9 +1,21 @@
-const Anthropic = require('@anthropic-ai/sdk');
+let Anthropic;
+try {
+  Anthropic = require('@anthropic-ai/sdk');
+} catch (error) {
+  console.error('Failed to load @anthropic-ai/sdk. Please run: npm install @anthropic-ai/sdk');
+  Anthropic = null;
+}
 
 class ClaudeClient {
   constructor() {
     this.apiKey = process.env.ANTHROPIC_API_KEY;
     this.model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
+
+    if (!Anthropic) {
+      console.error('@anthropic-ai/sdk package not available');
+      this.client = null;
+      return;
+    }
 
     if (this.apiKey) {
       try {

@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "build": "npm install && npm run build:frontend && npm run prisma:generate",
+    "build": "npm install && npm run build:frontend && npm run prisma:generate && npm run prisma:deploy",
     "build:frontend": "cd ../frontend && npm install --include=dev && npm run build && cd ../backend && rm -rf public && cp -r ../frontend/dist public",
     "prisma:generate": "npx prisma generate",
+    "prisma:deploy": "npx prisma db push --skip-generate --accept-data-loss",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "node prisma/seed.js",

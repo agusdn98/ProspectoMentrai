@@ -40,7 +40,7 @@ const envOrigins = process.env.FRONTEND_URL
 const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...envOrigins]));
 
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? false : allowedOrigins, // Same-origin in production
+  origin: process.env.NODE_ENV === 'production' ? true : allowedOrigins, // Allow same-origin in production
   credentials: true
 }));
 

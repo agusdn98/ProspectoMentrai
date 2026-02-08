@@ -134,6 +134,63 @@ Example output:
       ];
     }
   }
+
+  async generateProspects(userQuery, criteria) {
+    const systemPrompt = `You are an expert B2B prospecting assistant. Based on the user's search query and extracted criteria, generate a list of realistic prospect profiles that match their requirements.
+
+Return ONLY valid JSON in this exact format:
+[
+  {
+    "companyName": "Company Name",
+    "companyDomain": "company.com",
+    "companyIndustry": "Industry",
+    "companySize": "51-200",
+    "companyLocation": "City, Country",
+    "companyFunding": "Series B",
+    "contactFullName": "First Last",
+    "contactTitle": "Job Title",
+    "contactEmail": "email@company.com",
+    "contactLinkedIn": "https://linkedin.com/in/profile",
+    "contactPhone": "+1234567890",
+    "matchScore": 85,
+    "matchReasons": ["Reason 1", "Reason 2"]
+  }
+]
+
+IMPORTANT:
+- Generate 8-15 realistic prospects
+- Use real-sounding company names and person names
+- Match scores should be between 70-95
+- Include 2-4 match reasons per prospect
+- Email format: firstname.lastname@domain.com or firstname@domain.com
+- Support both English and Spanish queries
+- Make it realistic and diverse
+- Return ONLY the JSON array, no markdown`;
+
+    const userMessage = `Generate prospects for: "${userQuery}"
+    
+Criteria extracted:
+- Industries: ${criteria.industries?.join(', ') || 'Any'}
+- Job Titles: ${criteria.jobTitles?.join(', ') || 'Any'}
+- Locations: ${criteria.locations?.join(', ') || 'Any'}
+- Company Sizes: ${criteria.companySizes?.join(', ') || 'Any'}
+- Departments: ${criteria.departments?.join(', ') || 'Any'}
+- Seniorities: ${criteria.seniorities?.join(', ') || 'Any'}`;
+
+    const responseText = await this.sendMessage(systemPrompt, userMessage, { maxTokens: 4000 });
+
+    try {
+      const cleanedResponse = responseText
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+      return JSON.parse(cleanedResponse);
+    } catch (error) {
+      console.error('Failed to parse prospects JSON:', responseText);
+      // Return empty array if parsing fails
+      return [];
+    }
+  }
 }
 
 module.exports = new ClaudeClient();

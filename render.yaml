@@ -27,15 +27,9 @@ services:
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 7d
-      - key: APOLLO_BASE_URL
-        value: https://api.apollo.io/api/v1
-      - key: APOLLO_RATE_LIMIT_PER_MINUTE
-        value: 120
       - key: ANTHROPIC_MODEL
         value: claude-sonnet-4-20250514
       - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: APOLLO_API_KEY
         sync: false
       - key: RATE_LIMIT_WINDOW_MS
         value: 900000

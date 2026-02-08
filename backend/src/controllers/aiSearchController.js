@@ -1,4 +1,3 @@
-const intelligentSearch = require('../services/apollo/intelligentSearch');
 const claudeClient = require('../services/ai/claudeClient');
 const queryInterpreter = require('../services/ai/queryInterpreter');
 const { formatResponse } = require('../services/ai/responseFormatter');
@@ -26,28 +25,31 @@ exports.search = async (req, res, next) => {
       });
     }
 
-    if (!process.env.APOLLO_API_KEY) {
-      logger.error('APOLLO_API_KEY not configured');
-      return res.status(503).json({
-        success: false,
-        error: 'Search service is not configured. Please contact support.'
-      });
-    }
-
     logger.info('AI search request', { userId, query });
 
-    const result = await intelligentSearch.search(query);
-    const summary = queryInterpreter.summarizeCriteria(result.criteria);
+    // Interpret the query with Claude AI
+    const criteria = await queryInterpreter.interpret(query);
+    const summary = queryInterpreter.summarizeCriteria(criteria);
+
+    // Generate prospect recommendations using Claude AI
+    const prospects = await claudeClient.generateProspects(query, criteria);
 
     if (userId) {
       await prisma.savedSearch.create({
         data: {
           searchName: query.substring(0, 100),
-          searchCriteria: result.criteria,
+          searchCriteria: criteria,
           createdBy: userId
         }
       }).catch((err) => logger.warn('SavedSearch create failed', { error: err.message }));
     }
+
+    const result = {
+      query,
+      criteria,
+      totalFound: prospects.length,
+      prospects
+    };
 
     return res.json(formatResponse(result, summary));
   } catch (error) {

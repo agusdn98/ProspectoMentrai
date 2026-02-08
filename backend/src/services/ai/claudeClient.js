@@ -5,14 +5,24 @@ class ClaudeClient {
     this.apiKey = process.env.ANTHROPIC_API_KEY;
     this.model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
 
-    this.client = new Anthropic({
-      apiKey: this.apiKey
-    });
+    if (this.apiKey) {
+      try {
+        this.client = new Anthropic({
+          apiKey: this.apiKey
+        });
+      } catch (error) {
+        console.error('Failed to initialize Anthropic client:', error);
+        this.client = null;
+      }
+    } else {
+      console.warn('ANTHROPIC_API_KEY not configured');
+      this.client = null;
+    }
   }
 
   ensureApiKey() {
-    if (!this.apiKey) {
-      throw new Error('ANTHROPIC_API_KEY is not set');
+    if (!this.apiKey || !this.client) {
+      throw new Error('ANTHROPIC_API_KEY is not configured. Please add it in Render dashboard.');
     }
   }
 

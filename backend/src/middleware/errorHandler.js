@@ -86,6 +86,11 @@ const errorHandler = (err, req, res, next) => {
     error = new ValidationError(messages);
   }
 
+  // Anthropic/Claude AI errors
+  if (err.message && err.message.includes('ANTHROPIC_API_KEY')) {
+    error = new AppError('AI service not configured. Please contact support.', 503);
+  }
+
   // Default to 500 server error
   const statusCode = error.statusCode || 500;
   const message = error.isOperational 

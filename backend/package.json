@@ -8,9 +8,9 @@
     "start": "node src/server.js",
     "build": "npm run build:frontend && npm run prisma:generate",
     "build:frontend": "cd ../frontend && npm install --include=dev && npm run build && cd ../backend && rm -rf public && cp -r ../frontend/dist public",
-    "prisma:generate": "npx prisma generate",
-    "prisma:migrate": "npx prisma migrate dev",
-    "prisma:studio": "npx prisma studio",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio",
     "prisma:seed": "node prisma/seed.js",
     "test": "jest --coverage",
     "test:watch": "jest --watch"

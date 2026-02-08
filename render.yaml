@@ -1,0 +1,47 @@
+services:
+  # PostgreSQL Database
+  - type: pserv
+    name: mentrai-db
+    region: oregon
+    plan: starter
+    databaseName: mentrai_prospecting
+    databaseUser: mentrai_user
+
+  # Web Service (Backend + Frontend)
+  - type: web
+    name: mentrai-app
+    region: oregon
+    plan: starter
+    runtime: node
+    rootDir: backend
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mentrai-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: APOLLO_BASE_URL
+        value: https://api.apollo.io/api/v1
+      - key: APOLLO_RATE_LIMIT_PER_MINUTE
+        value: 120
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-4-20250514
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: 100
+      - key: PORT
+        value: 5000
+      # Las siguientes necesitan ser agregadas manualmente en el dashboard:
+      # - APOLLO_API_KEY
+      # - ANTHROPIC_API_KEY
+      # - BRAVE_API_KEY
+      # - HUNTER_API_KEY (opcional)
+      # - CLEARBIT_API_KEY (opcional)

@@ -27,7 +27,10 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false, // Disable for SPA
+  crossOriginEmbedderPolicy: false
+}));
 
 // CORS configuration
 const defaultAllowedOrigins = ['http://localhost:5173', 'http://localhost:5174'];
@@ -37,7 +40,7 @@ const envOrigins = process.env.FRONTEND_URL
 const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...envOrigins]));
 
 app.use(cors({
-  origin: allowedOrigins,
+  origin: process.env.NODE_ENV === 'production' ? false : allowedOrigins, // Same-origin in production
   credentials: true
 }));
 
@@ -87,17 +90,28 @@ app.use('/api/lists', listsRoutes);
 app.use('/api/prospecting', prospectingRoutes);
 app.use('/api/ai-search', aiSearchRoutes);
 
-// Welcome route
-app.get('/', (req, res) => {
-  res.json({
-    message: 'MENTRAI Prospecting API',
-    version: '1.0.0',
-    documentation: '/api/docs'
+// Serve frontend static files in production
+if (process.env.NODE_ENV === 'production') {
+  const frontendPath = path.join(__dirname, '..', 'public');
+  app.use(express.static(frontendPath));
+  
+  // SPA fallback - serve index.html for all non-API routes
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendPath, 'index.html'));
   });
-});
-
-// 404 handler
-app.use(notFound);
+} else {
+  // Development welcome route
+  app.get('/', (req, res) => {
+    res.json({
+      message: 'MENTRAI Prospecting API',
+      version: '1.0.0',
+      documentation: '/api/docs'
+    });
+  });
+  
+  // 404 handler for dev
+  app.use(notFound);
+}
 
 // Global error handler
 app.use(errorHandler);

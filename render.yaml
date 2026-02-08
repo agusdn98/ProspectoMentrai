@@ -33,6 +33,10 @@ services:
         value: 120
       - key: ANTHROPIC_MODEL
         value: claude-sonnet-4-20250514
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: APOLLO_API_KEY
+        sync: false
       - key: RATE_LIMIT_WINDOW_MS
         value: 900000
       - key: RATE_LIMIT_MAX_REQUESTS
